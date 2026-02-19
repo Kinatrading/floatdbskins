@@ -3,7 +3,7 @@
   "name": "CSFloat Колекції та Float",
   "version": "1.2.0",
   "description": "Підбір колекції, special та rarity для формування посилання на CSFloat DB.",
-  "permissions": ["tabs", "scripting"],
+  "permissions": ["tabs", "scripting", "webRequest"],
   "host_permissions": ["https://csfloat.com/*"],
   "action": {
     "default_title": "CSFloat Колекції"

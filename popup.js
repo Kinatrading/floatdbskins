@@ -15,6 +15,7 @@ const scanResult = document.getElementById('scanResult');
 const rangeFill = document.getElementById('rangeFill');
 
 const STEP = 0.01;
+const RATE_LIMIT_PAUSE_THRESHOLD = 10;
 const rarityMetaByCollection = new Map();
 
 const RARITY_LABELS = {
@@ -290,6 +291,14 @@ async function waitForDbResult(tabId, timeoutMs = 45000) {
   return { state: 'timeout' };
 }
 
+function getRateLimitForTab(tabId) {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: 'GET_RATE_LIMIT', tabId }, (response) => {
+      resolve(response?.rateLimit || null);
+    });
+  });
+}
+
 async function scanSingleRarity({ rarityId, category }) {
   const tab = await chrome.tabs.create({
     url: buildLink({ rarity: String(rarityId), category }),
@@ -298,7 +307,12 @@ async function scanSingleRarity({ rarityId, category }) {
 
   try {
     await waitForTabComplete(tab.id);
-    return await waitForDbResult(tab.id);
+    const result = await waitForDbResult(tab.id);
+    const rateLimit = await getRateLimitForTab(tab.id);
+    return {
+      ...result,
+      rateLimit
+    };
   } finally {
     await chrome.tabs.remove(tab.id);
   }
@@ -308,8 +322,61 @@ function formatPercent(value) {
   return `${value.toFixed(3).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1')}%`;
 }
 
-function formatScanReport(lines, summary) {
-  return `${lines.join('\n')}\n\n${summary}`;
+function formatScanReport(lines, summary, coverageLines = []) {
+  if (!coverageLines.length) {
+    return `${lines.join('\n')}\n\n${summary}`;
+  }
+
+  return `${lines.join('\n')}\n\n${coverageLines.join('\n')}\n\n${summary}`;
+}
+
+async function pauseForRateLimit(rateLimit) {
+  if (!rateLimit || rateLimit.remaining >= RATE_LIMIT_PAUSE_THRESHOLD) return;
+
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const waitMs = Math.max((rateLimit.reset - nowSeconds) * 1000, 1000);
+  statusEl.textContent = `Rate limit: лишилось ${rateLimit.remaining}/${rateLimit.limit}. Пауза ${Math.ceil(waitMs / 1000)}с до reset...`;
+  await new Promise((resolve) => window.setTimeout(resolve, waitMs + 250));
+}
+
+function buildCoverageReport(entries, shouldScanStattrak) {
+  const eligible = entries.filter((entry) => entry.chancePercent > 0);
+  if (!eligible.length) return [];
+
+  const reference = [...eligible]
+    .sort((a, b) => b.rarityId - a.rarityId)
+    .find((entry) => entry.visibleCount > 0);
+
+  if (!reference) return [];
+
+  const referenceChanceFraction = reference.chancePercent / 100;
+  const estimatedOpenings = reference.visibleCount / referenceChanceFraction;
+
+  const coverageLines = [
+    `Видимість (еталон ${reference.rarityName} = 100%):`,
+    `Оцінка відкриттів: ${Math.round(estimatedOpenings).toLocaleString('en-US')}`
+  ];
+
+  for (const entry of eligible) {
+    const chanceFraction = entry.chancePercent / 100;
+    const expectedVisible = estimatedOpenings * chanceFraction;
+    const hiddenCount = Math.max(0, Math.round(expectedVisible - entry.visibleCount));
+    const visiblePercent = expectedVisible > 0
+      ? Math.min(100, (entry.visibleCount / expectedVisible) * 100)
+      : 0;
+    const hiddenPercent = Math.max(0, 100 - visiblePercent);
+
+    coverageLines.push(
+      `${entry.rarityName}: visible=${formatPercent(visiblePercent)} (${entry.visibleCount.toLocaleString('en-US')}), ` +
+      `hidden=${formatPercent(hiddenPercent)} (${hiddenCount.toLocaleString('en-US')}), expected=${Math.round(expectedVisible).toLocaleString('en-US')}`
+    );
+  }
+
+  if (!shouldScanStattrak) {
+    coverageLines.push('Примітка: розрахунок виконано лише по normal (StatTrak вимкнено).');
+  }
+
+  return coverageLines;
 }
 
 async function runRarityScan() {
@@ -331,6 +398,7 @@ async function runRarityScan() {
   statusEl.textContent = `Знайдено ${meta.kind} з rarity: ${rarityIds.map((id) => RARITY_LABELS[id]).join(', ')}`;
 
   const lines = [];
+  const coverageEntries = [];
   let total = 0;
 
   try {
@@ -341,6 +409,7 @@ async function runRarityScan() {
       statusEl.textContent = `Перевіряю ${rarityName}...`;
       const normalResult = await scanSingleRarity({ rarityId, category: '' });
       const normalCount = normalResult.state === 'ready' ? normalResult.count : 0;
+      await pauseForRateLimit(normalResult.rateLimit);
 
       let stattrakCount = 0;
       let stattrakChance = 0;
@@ -350,20 +419,38 @@ async function runRarityScan() {
         const stattrakResult = await scanSingleRarity({ rarityId, category: '2' });
         stattrakCount = stattrakResult.state === 'ready' ? stattrakResult.count : 0;
         stattrakChance = baseChance * 0.1;
+        await pauseForRateLimit(stattrakResult.rateLimit);
       }
 
       const rarityTotal = normalCount + stattrakCount;
-      total += rarityTotal;
+      const effectiveChance = baseChance + stattrakChance;
 
-      lines.push(
-        `${rarityName} (${rarityId}): normal=${normalCount.toLocaleString('en-US')} [${formatPercent(baseChance)}], ` +
-        `stattrak=${stattrakCount.toLocaleString('en-US')} [${formatPercent(stattrakChance)}], total=${rarityTotal.toLocaleString('en-US')}`
-      );
+      total += rarityTotal;
+      coverageEntries.push({
+        rarityId,
+        rarityName,
+        visibleCount: rarityTotal,
+        chancePercent: effectiveChance
+      });
+
+      if (shouldScanStattrak) {
+        lines.push(
+          `${rarityName} (${rarityId}): normal=${normalCount.toLocaleString('en-US')} [${formatPercent(baseChance)}], ` +
+          `stattrak=${stattrakCount.toLocaleString('en-US')} [${formatPercent(stattrakChance)}], total=${rarityTotal.toLocaleString('en-US')}`
+        );
+      } else {
+        lines.push(
+          `${rarityName} (${rarityId}): normal=${normalCount.toLocaleString('en-US')} [${formatPercent(baseChance)}], total=${rarityTotal.toLocaleString('en-US')}`
+        );
+      }
     }
+
+    const coverageLines = buildCoverageReport(coverageEntries, shouldScanStattrak);
 
     scanResult.value = formatScanReport(
       lines,
-      `Тип: ${meta.kind}. Загальна кількість скінів: ${total.toLocaleString('en-US')}`
+      `Тип: ${meta.kind}. Загальна кількість скінів: ${total.toLocaleString('en-US')}`,
+      coverageLines
     );
     statusEl.textContent = 'Готово. Автозбір завершено.';
   } catch (error) {
