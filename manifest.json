@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "CSFloat Колекції та Float",
+  "version": "1.0.0",
+  "description": "Підбір колекції та діапазону float для швидкого формування посилання на базу CSFloat.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "CSFloat Колекції"
+  }
+}

@@ -1,0 +1,366 @@
+[
+  {
+    "id": "set-xpshop-wpn-01",
+    "name": "Limited Edition Item"
+  },
+  {
+    "id": "set-inferno-2",
+    "name": "The 2018 Inferno Collection"
+  },
+  {
+    "id": "set-nuke-2",
+    "name": "The 2018 Nuke Collection"
+  },
+  {
+    "id": "set-dust-2-2021",
+    "name": "The 2021 Dust 2 Collection"
+  },
+  {
+    "id": "set-mirage-2021",
+    "name": "The 2021 Mirage Collection"
+  },
+  {
+    "id": "set-train-2021",
+    "name": "The 2021 Train Collection"
+  },
+  {
+    "id": "set-vertigo-2021",
+    "name": "The 2021 Vertigo Collection"
+  },
+  {
+    "id": "set-timed-drops-achroma",
+    "name": "The Achroma Collection"
+  },
+  {
+    "id": "set-bravo-ii",
+    "name": "The Alpha Collection"
+  },
+  {
+    "id": "set-op10-ancient",
+    "name": "The Ancient Collection"
+  },
+  {
+    "id": "set-anubis",
+    "name": "The Anubis Collection"
+  },
+  {
+    "id": "set-weapons-ii",
+    "name": "The Arms Deal 2 Collection"
+  },
+  {
+    "id": "set-weapons-iii",
+    "name": "The Arms Deal 3 Collection"
+  },
+  {
+    "id": "set-weapons-i",
+    "name": "The Arms Deal Collection"
+  },
+  {
+    "id": "set-timed-drops-cool",
+    "name": "The Ascent Collection"
+  },
+  {
+    "id": "set-assault",
+    "name": "The Assault Collection"
+  },
+  {
+    "id": "set-aztec",
+    "name": "The Aztec Collection"
+  },
+  {
+    "id": "set-baggage",
+    "name": "The Baggage Collection"
+  },
+  {
+    "id": "set-bank",
+    "name": "The Bank Collection"
+  },
+  {
+    "id": "set-blacksite",
+    "name": "The Blacksite Collection"
+  },
+  {
+    "id": "set-timed-drops-neutral",
+    "name": "The Boreal Collection"
+  },
+  {
+    "id": "set-bravo-i",
+    "name": "The Bravo Collection"
+  },
+  {
+    "id": "set-community-4",
+    "name": "The Breakout Collection"
+  },
+  {
+    "id": "set-cache",
+    "name": "The Cache Collection"
+  },
+  {
+    "id": "set-canals",
+    "name": "The Canals Collection"
+  },
+  {
+    "id": "set-chopshop",
+    "name": "The Chop Shop Collection"
+  },
+  {
+    "id": "set-community-7",
+    "name": "The Chroma 2 Collection"
+  },
+  {
+    "id": "set-community-12",
+    "name": "The Chroma 3 Collection"
+  },
+  {
+    "id": "set-community-6",
+    "name": "The Chroma Collection"
+  },
+  {
+    "id": "set-community-19",
+    "name": "The Clutch Collection"
+  },
+  {
+    "id": "set-cobblestone",
+    "name": "The Cobblestone Collection"
+  },
+  {
+    "id": "set-op10-ct",
+    "name": "The Control Collection"
+  },
+  {
+    "id": "set-community-24",
+    "name": "The CS20 Collection"
+  },
+  {
+    "id": "set-community-21",
+    "name": "The Danger Zone Collection"
+  },
+  {
+    "id": "set-community-30",
+    "name": "The Dreams & Nightmares Collection"
+  },
+  {
+    "id": "set-dust-2",
+    "name": "The Dust 2 Collection"
+  },
+  {
+    "id": "set-dust",
+    "name": "The Dust Collection"
+  },
+  {
+    "id": "set-esports",
+    "name": "The eSports 2013 Collection"
+  },
+  {
+    "id": "set-esports-ii",
+    "name": "The eSports 2013 Winter Collection"
+  },
+  {
+    "id": "set-esports-iii",
+    "name": "The eSports 2014 Summer Collection"
+  },
+  {
+    "id": "set-community-8",
+    "name": "The Falchion Collection"
+  },
+  {
+    "id": "set-community-35",
+    "name": "The Fever Collection"
+  },
+  {
+    "id": "set-community-26",
+    "name": "The Fracture Collection"
+  },
+  {
+    "id": "set-community-34",
+    "name": "The Gallery Collection"
+  },
+  {
+    "id": "set-gamma-2",
+    "name": "The Gamma 2 Collection"
+  },
+  {
+    "id": "set-community-13",
+    "name": "The Gamma Collection"
+  },
+  {
+    "id": "set-community-36",
+    "name": "The Genesis Collection"
+  },
+  {
+    "id": "set-community-15",
+    "name": "The Glove Collection"
+  },
+  {
+    "id": "set-gods-and-monsters",
+    "name": "The Gods and Monsters Collection"
+  },
+  {
+    "id": "set-graphic-design",
+    "name": "The Graphic Design Collection"
+  },
+  {
+    "id": "set-timed-drops-exuberant",
+    "name": "The Harlequin Collection"
+  },
+  {
+    "id": "set-op10-t",
+    "name": "The Havoc Collection"
+  },
+  {
+    "id": "set-community-20",
+    "name": "The Horizon Collection"
+  },
+  {
+    "id": "set-community-3",
+    "name": "The Huntsman Collection"
+  },
+  {
+    "id": "set-inferno",
+    "name": "The Inferno Collection"
+  },
+  {
+    "id": "set-italy",
+    "name": "The Italy Collection"
+  },
+  {
+    "id": "set-community-33",
+    "name": "The Kilowatt Collection"
+  },
+  {
+    "id": "set-lake",
+    "name": "The Lake Collection"
+  },
+  {
+    "id": "set-militia",
+    "name": "The Militia Collection"
+  },
+  {
+    "id": "set-mirage",
+    "name": "The Mirage Collection"
+  },
+  {
+    "id": "set-norse",
+    "name": "The Norse Collection"
+  },
+  {
+    "id": "set-nuke",
+    "name": "The Nuke Collection"
+  },
+  {
+    "id": "set-office",
+    "name": "The Office Collection"
+  },
+  {
+    "id": "set-community-27",
+    "name": "The Operation Broken Fang Collection"
+  },
+  {
+    "id": "set-community-17",
+    "name": "The Operation Hydra Collection"
+  },
+  {
+    "id": "set-community-29",
+    "name": "The Operation Riptide Collection"
+  },
+  {
+    "id": "set-overpass-2024",
+    "name": "The Overpass 2024 Collection"
+  },
+  {
+    "id": "set-overpass",
+    "name": "The Overpass Collection"
+  },
+  {
+    "id": "set-community-2",
+    "name": "The Phoenix Collection"
+  },
+  {
+    "id": "set-community-25",
+    "name": "The Prisma 2 Collection"
+  },
+  {
+    "id": "set-community-22",
+    "name": "The Prisma Collection"
+  },
+  {
+    "id": "set-timed-drops-warm",
+    "name": "The Radiant Collection"
+  },
+  {
+    "id": "set-community-31",
+    "name": "The Recoil Collection"
+  },
+  {
+    "id": "set-community-32",
+    "name": "The Revolution Collection"
+  },
+  {
+    "id": "set-community-10",
+    "name": "The Revolver Case Collection"
+  },
+  {
+    "id": "set-kimono",
+    "name": "The Rising Sun Collection"
+  },
+  {
+    "id": "set-safehouse",
+    "name": "The Safehouse Collection"
+  },
+  {
+    "id": "set-community-9",
+    "name": "The Shadow Collection"
+  },
+  {
+    "id": "set-community-23",
+    "name": "The Shattered Web Collection"
+  },
+  {
+    "id": "set-community-28",
+    "name": "The Snakebite Collection"
+  },
+  {
+    "id": "set-community-18",
+    "name": "The Spectrum 2 Collection"
+  },
+  {
+    "id": "set-community-16",
+    "name": "The Spectrum Collection"
+  },
+  {
+    "id": "set-realism-camo",
+    "name": "The Sport & Field Collection"
+  },
+  {
+    "id": "set-stmarc",
+    "name": "The St. Marc Collection"
+  },
+  {
+    "id": "set-train-2025",
+    "name": "The Train 2025 Collection"
+  },
+  {
+    "id": "set-train",
+    "name": "The Train Collection"
+  },
+  {
+    "id": "set-community-5",
+    "name": "The Vanguard Collection"
+  },
+  {
+    "id": "set-vertigo",
+    "name": "The Vertigo Collection"
+  },
+  {
+    "id": "set-community-11",
+    "name": "The Wildfire Collection"
+  },
+  {
+    "id": "set-community-1",
+    "name": "The Winter Offensive Collection"
+  },
+  {
+    "id": "set-xraymachine",
+    "name": "The X-Ray Collection"
+  }
+]
