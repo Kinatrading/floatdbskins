@@ -10,6 +10,7 @@ const openBtn = document.getElementById('openBtn');
 const copyBtn = document.getElementById('copyBtn');
 const runScanBtn = document.getElementById('runScanBtn');
 const includeStattrak = document.getElementById('includeStattrak');
+const excludeCrafted = document.getElementById('excludeCrafted');
 const statusEl = document.getElementById('status');
 const scanResult = document.getElementById('scanResult');
 const rangeFill = document.getElementById('rangeFill');
@@ -64,13 +65,14 @@ function updateRangeFill() {
   rangeFill.style.width = `${(max - min) * 100}%`;
 }
 
-function buildLink({ rarity, category } = {}) {
+function buildLink({ rarity, category, paintSeed } = {}) {
   const params = new URLSearchParams();
   const selectedCategory = category ?? getSelectedSpecialCategory();
   const selectedRarity = rarity ?? raritySelect.value;
 
   if (selectedCategory) params.set('category', selectedCategory);
   if (selectedRarity) params.set('rarity', selectedRarity);
+  if (paintSeed) params.set('paintSeed', paintSeed);
 
   params.set('min', formatFloat(minRange.value));
   params.set('max', formatFloat(maxRange.value));
@@ -318,6 +320,25 @@ async function scanSingleRarity({ rarityId, category }) {
   }
 }
 
+async function scanPaintSeed1000({ rarityId, category }) {
+  const tab = await chrome.tabs.create({
+    url: buildLink({ rarity: String(rarityId), category, paintSeed: '1000' }),
+    active: false
+  });
+
+  try {
+    await waitForTabComplete(tab.id);
+    const result = await waitForDbResult(tab.id);
+    const rateLimit = await getRateLimitForTab(tab.id);
+    return {
+      ...result,
+      rateLimit
+    };
+  } finally {
+    await chrome.tabs.remove(tab.id);
+  }
+}
+
 function formatPercent(value) {
   return `${value.toFixed(3).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1')}%`;
 }
@@ -376,7 +397,71 @@ function buildCoverageReport(entries, shouldScanStattrak) {
     coverageLines.push('Примітка: розрахунок виконано лише по normal (StatTrak вимкнено).');
   }
 
+  const theoreticalLines = buildTheoreticalCoverageReport(eligible, estimatedOpenings);
+  if (theoreticalLines.length) {
+    coverageLines.push('', ...theoreticalLines);
+  }
+
   return coverageLines;
+}
+
+function buildTheoreticalCoverageReport(eligible, baselineOpenings) {
+  const highest = [...eligible].sort((a, b) => b.rarityId - a.rarityId)[0];
+  if (!highest) return [];
+
+  const previous = eligible.find((entry) => entry.rarityId === highest.rarityId - 1);
+  if (!previous) {
+    return ['Теоретично: недостатньо сусідніх rarity для оцінки найвищої якості.'];
+  }
+
+  const previousExpected = baselineOpenings * (previous.chancePercent / 100);
+  const previousVisiblePercent = previousExpected > 0
+    ? Math.min(100, (previous.visibleCount / previousExpected) * 100)
+    : 0;
+  const previousHiddenPercent = Math.max(0, 100 - previousVisiblePercent);
+
+  const highestHiddenMin = Math.max(0, Math.min(99.9, previousHiddenPercent * 0.65));
+  const highestHiddenCore = Math.max(0, Math.min(99.9, previousHiddenPercent * 0.68));
+  const highestHiddenMax = Math.max(0, Math.min(99.9, previousHiddenPercent * 0.70));
+
+  const highestChanceFraction = highest.chancePercent / 100;
+  if (highestChanceFraction <= 0) {
+    return ['Теоретично: шанс найвищої rarity = 0, перерахунок неможливий.'];
+  }
+
+  const openingsLow = highest.visibleCount / ((1 - highestHiddenMin / 100) * highestChanceFraction);
+  const openingsHigh = highest.visibleCount / ((1 - highestHiddenMax / 100) * highestChanceFraction);
+
+  const lines = [
+    `Теоретично: ${highest.rarityName} hidden% ≈ ${formatPercent(highestHiddenMin)}–${formatPercent(highestHiddenMax)} (база: ${previous.rarityName} hidden% × 0.68, центр ${formatPercent(highestHiddenCore)}).`,
+    `Теоретично: оцінка відкриттів ≈ ${Math.round(openingsLow).toLocaleString('en-US')}–${Math.round(openingsHigh).toLocaleString('en-US')}.`
+  ];
+
+  for (const entry of eligible) {
+    const chanceFraction = entry.chancePercent / 100;
+    const expectedLow = openingsLow * chanceFraction;
+    const expectedHigh = openingsHigh * chanceFraction;
+
+    const visiblePercentLow = expectedLow > 0
+      ? Math.min(100, (entry.visibleCount / expectedLow) * 100)
+      : 0;
+    const visiblePercentHigh = expectedHigh > 0
+      ? Math.min(100, (entry.visibleCount / expectedHigh) * 100)
+      : 0;
+
+    const hiddenPercentLow = Math.max(0, 100 - visiblePercentLow);
+    const hiddenPercentHigh = Math.max(0, 100 - visiblePercentHigh);
+    const hiddenCountLow = Math.max(0, Math.round(expectedLow - entry.visibleCount));
+    const hiddenCountHigh = Math.max(0, Math.round(expectedHigh - entry.visibleCount));
+
+    lines.push(
+      `Теоретично ${entry.rarityName}: visible=${formatPercent(Math.min(visiblePercentLow, visiblePercentHigh))}-${formatPercent(Math.max(visiblePercentLow, visiblePercentHigh))} (${entry.visibleCount.toLocaleString('en-US')}), ` +
+      `hidden=${formatPercent(Math.min(hiddenPercentLow, hiddenPercentHigh))}-${formatPercent(Math.max(hiddenPercentLow, hiddenPercentHigh))} (${Math.min(hiddenCountLow, hiddenCountHigh).toLocaleString('en-US')}-${Math.max(hiddenCountLow, hiddenCountHigh).toLocaleString('en-US')}), ` +
+      `expected=${Math.round(Math.min(expectedLow, expectedHigh)).toLocaleString('en-US')}-${Math.round(Math.max(expectedLow, expectedHigh)).toLocaleString('en-US')}`
+    );
+  }
+
+  return lines;
 }
 
 async function runRarityScan() {
@@ -393,7 +478,11 @@ async function runRarityScan() {
   }
 
   const shouldScanStattrak = includeStattrak.checked;
+  const shouldExcludeCrafted = excludeCrafted.checked;
+  const selectedCategory = getSelectedSpecialCategory();
+  const normalCategory = selectedCategory || '1';
   const rarityIds = meta.sortedRarityIds.filter((id) => id <= 6);
+  const lowestRarityId = Math.min(...rarityIds);
 
   statusEl.textContent = `Знайдено ${meta.kind} з rarity: ${rarityIds.map((id) => RARITY_LABELS[id]).join(', ')}`;
 
@@ -407,22 +496,46 @@ async function runRarityScan() {
       const baseChance = meta.baseChances.get(rarityId) || 0;
 
       statusEl.textContent = `Перевіряю ${rarityName}...`;
-      const normalResult = await scanSingleRarity({ rarityId, category: '' });
+      const normalResult = await scanSingleRarity({ rarityId, category: normalCategory });
       const normalCount = normalResult.state === 'ready' ? normalResult.count : 0;
       await pauseForRateLimit(normalResult.rateLimit);
 
+      let normalAdjustedCount = normalCount;
+      let normalCraftedEstimate = 0;
+
+      if (shouldExcludeCrafted && rarityId !== lowestRarityId) {
+        statusEl.textContent = `Перевіряю ${rarityName} (paintSeed=1000)...`;
+        const normalPatternResult = await scanPaintSeed1000({ rarityId, category: normalCategory });
+        const patternCount = normalPatternResult.state === 'ready' ? normalPatternResult.count : 0;
+        normalCraftedEstimate = patternCount * 1000;
+        normalAdjustedCount = Math.max(0, normalCount - normalCraftedEstimate);
+        await pauseForRateLimit(normalPatternResult.rateLimit);
+      }
+
       let stattrakCount = 0;
+      let stattrakAdjustedCount = 0;
+      let stattrakCraftedEstimate = 0;
       let stattrakChance = 0;
 
       if (shouldScanStattrak) {
         statusEl.textContent = `Перевіряю ${rarityName} (StatTrak)...`;
         const stattrakResult = await scanSingleRarity({ rarityId, category: '2' });
         stattrakCount = stattrakResult.state === 'ready' ? stattrakResult.count : 0;
+        stattrakAdjustedCount = stattrakCount;
         stattrakChance = baseChance * 0.1;
         await pauseForRateLimit(stattrakResult.rateLimit);
+
+        if (shouldExcludeCrafted && rarityId !== lowestRarityId) {
+          statusEl.textContent = `Перевіряю ${rarityName} (StatTrak, paintSeed=1000)...`;
+          const stattrakPatternResult = await scanPaintSeed1000({ rarityId, category: '2' });
+          const patternCount = stattrakPatternResult.state === 'ready' ? stattrakPatternResult.count : 0;
+          stattrakCraftedEstimate = patternCount * 1000;
+          stattrakAdjustedCount = Math.max(0, stattrakCount - stattrakCraftedEstimate);
+          await pauseForRateLimit(stattrakPatternResult.rateLimit);
+        }
       }
 
-      const rarityTotal = normalCount + stattrakCount;
+      const rarityTotal = normalAdjustedCount + stattrakAdjustedCount;
       const effectiveChance = baseChance + stattrakChance;
 
       total += rarityTotal;
@@ -434,14 +547,27 @@ async function runRarityScan() {
       });
 
       if (shouldScanStattrak) {
-        lines.push(
-          `${rarityName} (${rarityId}): normal=${normalCount.toLocaleString('en-US')} [${formatPercent(baseChance)}], ` +
-          `stattrak=${stattrakCount.toLocaleString('en-US')} [${formatPercent(stattrakChance)}], total=${rarityTotal.toLocaleString('en-US')}`
-        );
+        if (shouldExcludeCrafted && rarityId !== lowestRarityId) {
+          lines.push(
+            `${rarityName} (${rarityId}): normal=${normalAdjustedCount.toLocaleString('en-US')} (raw ${normalCount.toLocaleString('en-US')} - crafted ${normalCraftedEstimate.toLocaleString('en-US')}) [${formatPercent(baseChance)}], ` +
+            `stattrak=${stattrakAdjustedCount.toLocaleString('en-US')} (raw ${stattrakCount.toLocaleString('en-US')} - crafted ${stattrakCraftedEstimate.toLocaleString('en-US')}) [${formatPercent(stattrakChance)}], total=${rarityTotal.toLocaleString('en-US')}`
+          );
+        } else {
+          lines.push(
+            `${rarityName} (${rarityId}): normal=${normalAdjustedCount.toLocaleString('en-US')} [${formatPercent(baseChance)}], ` +
+            `stattrak=${stattrakAdjustedCount.toLocaleString('en-US')} [${formatPercent(stattrakChance)}], total=${rarityTotal.toLocaleString('en-US')}`
+          );
+        }
       } else {
-        lines.push(
-          `${rarityName} (${rarityId}): normal=${normalCount.toLocaleString('en-US')} [${formatPercent(baseChance)}], total=${rarityTotal.toLocaleString('en-US')}`
-        );
+        if (shouldExcludeCrafted && rarityId !== lowestRarityId) {
+          lines.push(
+            `${rarityName} (${rarityId}): normal=${normalAdjustedCount.toLocaleString('en-US')} (raw ${normalCount.toLocaleString('en-US')} - crafted ${normalCraftedEstimate.toLocaleString('en-US')}) [${formatPercent(baseChance)}], total=${rarityTotal.toLocaleString('en-US')}`
+          );
+        } else {
+          lines.push(
+            `${rarityName} (${rarityId}): normal=${normalAdjustedCount.toLocaleString('en-US')} [${formatPercent(baseChance)}], total=${rarityTotal.toLocaleString('en-US')}`
+          );
+        }
       }
     }
 
