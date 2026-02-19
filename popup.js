@@ -397,7 +397,71 @@ function buildCoverageReport(entries, shouldScanStattrak) {
     coverageLines.push('Примітка: розрахунок виконано лише по normal (StatTrak вимкнено).');
   }
 
+  const theoreticalLines = buildTheoreticalCoverageReport(eligible, estimatedOpenings);
+  if (theoreticalLines.length) {
+    coverageLines.push('', ...theoreticalLines);
+  }
+
   return coverageLines;
+}
+
+function buildTheoreticalCoverageReport(eligible, baselineOpenings) {
+  const highest = [...eligible].sort((a, b) => b.rarityId - a.rarityId)[0];
+  if (!highest) return [];
+
+  const previous = eligible.find((entry) => entry.rarityId === highest.rarityId - 1);
+  if (!previous) {
+    return ['Теоретично: недостатньо сусідніх rarity для оцінки найвищої якості.'];
+  }
+
+  const previousExpected = baselineOpenings * (previous.chancePercent / 100);
+  const previousVisiblePercent = previousExpected > 0
+    ? Math.min(100, (previous.visibleCount / previousExpected) * 100)
+    : 0;
+  const previousHiddenPercent = Math.max(0, 100 - previousVisiblePercent);
+
+  const highestHiddenMin = Math.max(0, Math.min(99.9, previousHiddenPercent * 0.65));
+  const highestHiddenCore = Math.max(0, Math.min(99.9, previousHiddenPercent * 0.68));
+  const highestHiddenMax = Math.max(0, Math.min(99.9, previousHiddenPercent * 0.70));
+
+  const highestChanceFraction = highest.chancePercent / 100;
+  if (highestChanceFraction <= 0) {
+    return ['Теоретично: шанс найвищої rarity = 0, перерахунок неможливий.'];
+  }
+
+  const openingsLow = highest.visibleCount / ((1 - highestHiddenMin / 100) * highestChanceFraction);
+  const openingsHigh = highest.visibleCount / ((1 - highestHiddenMax / 100) * highestChanceFraction);
+
+  const lines = [
+    `Теоретично: ${highest.rarityName} hidden% ≈ ${formatPercent(highestHiddenMin)}–${formatPercent(highestHiddenMax)} (база: ${previous.rarityName} hidden% × 0.68, центр ${formatPercent(highestHiddenCore)}).`,
+    `Теоретично: оцінка відкриттів ≈ ${Math.round(openingsLow).toLocaleString('en-US')}–${Math.round(openingsHigh).toLocaleString('en-US')}.`
+  ];
+
+  for (const entry of eligible) {
+    const chanceFraction = entry.chancePercent / 100;
+    const expectedLow = openingsLow * chanceFraction;
+    const expectedHigh = openingsHigh * chanceFraction;
+
+    const visiblePercentLow = expectedLow > 0
+      ? Math.min(100, (entry.visibleCount / expectedLow) * 100)
+      : 0;
+    const visiblePercentHigh = expectedHigh > 0
+      ? Math.min(100, (entry.visibleCount / expectedHigh) * 100)
+      : 0;
+
+    const hiddenPercentLow = Math.max(0, 100 - visiblePercentLow);
+    const hiddenPercentHigh = Math.max(0, 100 - visiblePercentHigh);
+    const hiddenCountLow = Math.max(0, Math.round(expectedLow - entry.visibleCount));
+    const hiddenCountHigh = Math.max(0, Math.round(expectedHigh - entry.visibleCount));
+
+    lines.push(
+      `Теоретично ${entry.rarityName}: visible=${formatPercent(Math.min(visiblePercentLow, visiblePercentHigh))}-${formatPercent(Math.max(visiblePercentLow, visiblePercentHigh))} (${entry.visibleCount.toLocaleString('en-US')}), ` +
+      `hidden=${formatPercent(Math.min(hiddenPercentLow, hiddenPercentHigh))}-${formatPercent(Math.max(hiddenPercentLow, hiddenPercentHigh))} (${Math.min(hiddenCountLow, hiddenCountHigh).toLocaleString('en-US')}-${Math.max(hiddenCountLow, hiddenCountHigh).toLocaleString('en-US')}), ` +
+      `expected=${Math.round(Math.min(expectedLow, expectedHigh)).toLocaleString('en-US')}-${Math.round(Math.max(expectedLow, expectedHigh)).toLocaleString('en-US')}`
+    );
+  }
+
+  return lines;
 }
 
 async function runRarityScan() {
