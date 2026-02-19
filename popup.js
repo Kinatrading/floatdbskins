@@ -8,10 +8,34 @@ const maxInput = document.getElementById('maxInput');
 const resultUrl = document.getElementById('resultUrl');
 const openBtn = document.getElementById('openBtn');
 const copyBtn = document.getElementById('copyBtn');
+const runScanBtn = document.getElementById('runScanBtn');
+const includeStattrak = document.getElementById('includeStattrak');
 const statusEl = document.getElementById('status');
+const scanResult = document.getElementById('scanResult');
 const rangeFill = document.getElementById('rangeFill');
 
 const STEP = 0.01;
+const rarityMetaByCollection = new Map();
+
+const RARITY_LABELS = {
+  1: 'Consumer',
+  2: 'Industrial',
+  3: 'Mil-Spec',
+  4: 'Restricted',
+  5: 'Classified',
+  6: 'Covert'
+};
+
+const API_RARITY_TO_ID = {
+  'Consumer Grade': 1,
+  'Industrial Grade': 2,
+  'Mil-Spec Grade': 3,
+  Restricted: 4,
+  Classified: 5,
+  Covert: 6,
+  Contraband: 7,
+  Extraordinary: 7
+};
 
 function roundToStep(value) {
   return Math.round(value / STEP) * STEP;
@@ -39,19 +63,23 @@ function updateRangeFill() {
   rangeFill.style.width = `${(max - min) * 100}%`;
 }
 
-function getLink() {
+function buildLink({ rarity, category } = {}) {
   const params = new URLSearchParams();
-  const category = getSelectedSpecialCategory();
-  const rarity = raritySelect.value;
+  const selectedCategory = category ?? getSelectedSpecialCategory();
+  const selectedRarity = rarity ?? raritySelect.value;
 
-  if (category) params.set('category', category);
-  if (rarity) params.set('rarity', rarity);
+  if (selectedCategory) params.set('category', selectedCategory);
+  if (selectedRarity) params.set('rarity', selectedRarity);
 
   params.set('min', formatFloat(minRange.value));
   params.set('max', formatFloat(maxRange.value));
   params.set('collection', collectionSelect.value);
 
   return `https://csfloat.com/db?${params.toString()}`;
+}
+
+function getLink() {
+  return buildLink();
 }
 
 function renderLink() {
@@ -87,20 +115,263 @@ function syncFromInput(changed) {
   renderLink();
 }
 
+function normalizeCollectionId(apiId) {
+  return String(apiId || '').replace(/^collection-/, '').replace(/-/g, '_');
+}
+
+function computeCollectionBaseChances(rarityIds) {
+  const available = [...rarityIds].filter((r) => r >= 1 && r <= 6).sort((a, b) => a - b);
+  const chances = new Map();
+
+  available.forEach((rarityId, index) => {
+    chances.set(rarityId, 80 * 0.2 ** index);
+  });
+
+  return chances;
+}
+
+function computeCrateBaseChances(rarityIds) {
+  const crateBase = [79.92, 15.98, 3.2, 0.64, 0.26];
+  const available = [...rarityIds].filter((r) => r >= 1 && r <= 6).sort((a, b) => a - b);
+  const chances = new Map();
+
+  available.forEach((rarityId, index) => {
+    chances.set(rarityId, crateBase[index] ?? 0);
+  });
+
+  return chances;
+}
+
+function buildCollectionMetadata(skins) {
+  const map = new Map();
+
+  for (const skin of skins) {
+    const rarityId = API_RARITY_TO_ID[skin?.rarity?.name];
+    if (!rarityId || rarityId > 6) continue;
+
+    for (const collection of skin.collections || []) {
+      const normalizedId = normalizeCollectionId(collection.id);
+      if (!normalizedId) continue;
+
+      if (!map.has(normalizedId)) {
+        map.set(normalizedId, {
+          rarityIds: new Set(),
+          hasStattrakSkins: false,
+          hasAnyCrates: false
+        });
+      }
+
+      const entry = map.get(normalizedId);
+      entry.rarityIds.add(rarityId);
+      entry.hasStattrakSkins = entry.hasStattrakSkins || Boolean(skin.stattrak);
+      entry.hasAnyCrates = entry.hasAnyCrates || (skin.crates || []).length > 0;
+    }
+  }
+
+  for (const entry of map.values()) {
+    const sortedRarityIds = [...entry.rarityIds].sort((a, b) => a - b);
+    entry.sortedRarityIds = sortedRarityIds;
+    entry.kind = entry.hasStattrakSkins ? 'crate' : 'collection';
+    entry.baseChances = entry.kind === 'crate'
+      ? computeCrateBaseChances(sortedRarityIds)
+      : computeCollectionBaseChances(sortedRarityIds);
+  }
+
+  return map;
+}
+
 async function loadCollections() {
-  const response = await fetch(chrome.runtime.getURL('collections.json'));
-  const collections = await response.json();
+  const [collectionsResponse, skinsResponse] = await Promise.all([
+    fetch(chrome.runtime.getURL('collections.json')),
+    fetch(chrome.runtime.getURL('skins.json'))
+  ]);
+
+  const [collections, skins] = await Promise.all([
+    collectionsResponse.json(),
+    skinsResponse.json()
+  ]);
+
+  const metadata = buildCollectionMetadata(skins);
+  rarityMetaByCollection.clear();
+  metadata.forEach((value, key) => rarityMetaByCollection.set(key, value));
 
   const fragment = document.createDocumentFragment();
   for (const col of collections) {
     const option = document.createElement('option');
     option.value = col.id;
-    option.textContent = col.name;
+
+    const meta = rarityMetaByCollection.get(col.id);
+    if (meta?.kind === 'crate') {
+      option.textContent = `${col.name} [crate]`;
+    } else if (meta?.kind === 'collection') {
+      option.textContent = `${col.name} [collection]`;
+    } else {
+      option.textContent = col.name;
+    }
+
     fragment.appendChild(option);
   }
 
   collectionSelect.appendChild(fragment);
   renderLink();
+}
+
+function waitForTabComplete(tabId, timeoutMs = 30000) {
+  return new Promise((resolve, reject) => {
+    let timeoutId;
+
+    const cleanup = () => {
+      chrome.tabs.onUpdated.removeListener(listener);
+      window.clearTimeout(timeoutId);
+    };
+
+    const listener = (updatedTabId, info) => {
+      if (updatedTabId !== tabId || info.status !== 'complete') return;
+      cleanup();
+      resolve();
+    };
+
+    timeoutId = window.setTimeout(() => {
+      cleanup();
+      reject(new Error('Timeout while waiting for tab load.'));
+    }, timeoutMs);
+
+    chrome.tabs.onUpdated.addListener(listener);
+  });
+}
+
+async function readDbState(tabId) {
+  const [{ result }] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const text = document.body?.innerText || '';
+      const errorText = "We've encountered an error, there are no items of that rarity in the selected collection - 4";
+
+      if (text.includes(errorText)) {
+        return { state: 'empty' };
+      }
+
+      const countNode = document.querySelector('div.count.ng-star-inserted');
+      if (!countNode) {
+        return { state: 'loading' };
+      }
+
+      const countText = countNode.textContent || '';
+      if (!/Items Found/i.test(countText)) {
+        return { state: 'loading' };
+      }
+
+      const numeric = countText.replace(/[^\d]/g, '');
+      if (!numeric) {
+        return { state: 'loading' };
+      }
+
+      return {
+        state: 'ready',
+        count: Number.parseInt(numeric, 10)
+      };
+    }
+  });
+
+  return result;
+}
+
+async function waitForDbResult(tabId, timeoutMs = 45000) {
+  const start = Date.now();
+
+  while (Date.now() - start <= timeoutMs) {
+    const state = await readDbState(tabId);
+    if (state.state === 'ready' || state.state === 'empty') {
+      return state;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 1000));
+  }
+
+  return { state: 'timeout' };
+}
+
+async function scanSingleRarity({ rarityId, category }) {
+  const tab = await chrome.tabs.create({
+    url: buildLink({ rarity: String(rarityId), category }),
+    active: false
+  });
+
+  try {
+    await waitForTabComplete(tab.id);
+    return await waitForDbResult(tab.id);
+  } finally {
+    await chrome.tabs.remove(tab.id);
+  }
+}
+
+function formatPercent(value) {
+  return `${value.toFixed(3).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1')}%`;
+}
+
+function formatScanReport(lines, summary) {
+  return `${lines.join('\n')}\n\n${summary}`;
+}
+
+async function runRarityScan() {
+  runScanBtn.disabled = true;
+  scanResult.value = '';
+
+  const selectedCollectionId = collectionSelect.value;
+  const meta = rarityMetaByCollection.get(selectedCollectionId);
+
+  if (!meta || !meta.sortedRarityIds?.length) {
+    statusEl.textContent = 'Не вдалося знайти rarity у skins.json для цієї колекції.';
+    runScanBtn.disabled = false;
+    return;
+  }
+
+  const shouldScanStattrak = includeStattrak.checked;
+  const rarityIds = meta.sortedRarityIds.filter((id) => id <= 6);
+
+  statusEl.textContent = `Знайдено ${meta.kind} з rarity: ${rarityIds.map((id) => RARITY_LABELS[id]).join(', ')}`;
+
+  const lines = [];
+  let total = 0;
+
+  try {
+    for (const rarityId of rarityIds) {
+      const rarityName = RARITY_LABELS[rarityId] || `Rarity ${rarityId}`;
+      const baseChance = meta.baseChances.get(rarityId) || 0;
+
+      statusEl.textContent = `Перевіряю ${rarityName}...`;
+      const normalResult = await scanSingleRarity({ rarityId, category: '' });
+      const normalCount = normalResult.state === 'ready' ? normalResult.count : 0;
+
+      let stattrakCount = 0;
+      let stattrakChance = 0;
+
+      if (shouldScanStattrak) {
+        statusEl.textContent = `Перевіряю ${rarityName} (StatTrak)...`;
+        const stattrakResult = await scanSingleRarity({ rarityId, category: '2' });
+        stattrakCount = stattrakResult.state === 'ready' ? stattrakResult.count : 0;
+        stattrakChance = baseChance * 0.1;
+      }
+
+      const rarityTotal = normalCount + stattrakCount;
+      total += rarityTotal;
+
+      lines.push(
+        `${rarityName} (${rarityId}): normal=${normalCount.toLocaleString('en-US')} [${formatPercent(baseChance)}], ` +
+        `stattrak=${stattrakCount.toLocaleString('en-US')} [${formatPercent(stattrakChance)}], total=${rarityTotal.toLocaleString('en-US')}`
+      );
+    }
+
+    scanResult.value = formatScanReport(
+      lines,
+      `Тип: ${meta.kind}. Загальна кількість скінів: ${total.toLocaleString('en-US')}`
+    );
+    statusEl.textContent = 'Готово. Автозбір завершено.';
+  } catch (error) {
+    statusEl.textContent = 'Помилка під час автоматичного обходу.';
+    console.error(error);
+  } finally {
+    runScanBtn.disabled = false;
+  }
 }
 
 minRange.addEventListener('input', () => syncFromRange('min'));
@@ -129,8 +400,12 @@ copyBtn.addEventListener('click', async () => {
   }
 });
 
+runScanBtn.addEventListener('click', () => {
+  runRarityScan();
+});
+
 loadCollections().catch((error) => {
-  statusEl.textContent = 'Помилка завантаження колекцій.';
+  statusEl.textContent = 'Помилка завантаження даних.';
   console.error(error);
 });
 
