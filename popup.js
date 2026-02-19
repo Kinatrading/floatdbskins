@@ -479,6 +479,8 @@ async function runRarityScan() {
 
   const shouldScanStattrak = includeStattrak.checked;
   const shouldExcludeCrafted = excludeCrafted.checked;
+  const selectedCategory = getSelectedSpecialCategory();
+  const normalCategory = selectedCategory || '1';
   const rarityIds = meta.sortedRarityIds.filter((id) => id <= 6);
   const lowestRarityId = Math.min(...rarityIds);
 
@@ -494,7 +496,7 @@ async function runRarityScan() {
       const baseChance = meta.baseChances.get(rarityId) || 0;
 
       statusEl.textContent = `Перевіряю ${rarityName}...`;
-      const normalResult = await scanSingleRarity({ rarityId, category: '' });
+      const normalResult = await scanSingleRarity({ rarityId, category: normalCategory });
       const normalCount = normalResult.state === 'ready' ? normalResult.count : 0;
       await pauseForRateLimit(normalResult.rateLimit);
 
@@ -503,7 +505,7 @@ async function runRarityScan() {
 
       if (shouldExcludeCrafted && rarityId !== lowestRarityId) {
         statusEl.textContent = `Перевіряю ${rarityName} (paintSeed=1000)...`;
-        const normalPatternResult = await scanPaintSeed1000({ rarityId, category: '' });
+        const normalPatternResult = await scanPaintSeed1000({ rarityId, category: normalCategory });
         const patternCount = normalPatternResult.state === 'ready' ? normalPatternResult.count : 0;
         normalCraftedEstimate = patternCount * 1000;
         normalAdjustedCount = Math.max(0, normalCount - normalCraftedEstimate);
