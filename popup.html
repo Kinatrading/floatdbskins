@@ -74,7 +74,13 @@
         <button id="copyBtn" class="button">Копіювати</button>
       </div>
 
-      <button id="runScanBtn" class="button accent">Автозбір rarity 1-6</button>
+      <button id="runScanBtn" class="button accent">Автозбір по rarity</button>
+
+      <label class="stattrak-toggle">
+        <input id="includeStattrak" type="checkbox" />
+        Додатково перевіряти StatTrak (category=2)
+      </label>
+
       <label class="label" for="scanResult">Результат автозбору</label>
       <textarea id="scanResult" class="input output" rows="7" readonly></textarea>
 

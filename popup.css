@@ -220,3 +220,17 @@ input[type='range']::-moz-range-thumb {
 #scanResult {
   margin-top: 2px;
 }
+
+.stattrak-toggle {
+  margin-top: 10px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.stattrak-toggle input {
+  accent-color: var(--accent);
+}
