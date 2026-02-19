@@ -1,4 +1,6 @@
 const collectionSelect = document.getElementById('collectionSelect');
+const raritySelect = document.getElementById('raritySelect');
+const specialRadios = document.querySelectorAll('input[name="special"]');
 const minRange = document.getElementById('minRange');
 const maxRange = document.getElementById('maxRange');
 const minInput = document.getElementById('minInput');
@@ -25,6 +27,11 @@ function formatFloat(value) {
   return Number(value).toFixed(2).replace(/\.?0+$/, '');
 }
 
+function getSelectedSpecialCategory() {
+  const checked = document.querySelector('input[name="special"]:checked');
+  return checked ? checked.value : '';
+}
+
 function updateRangeFill() {
   const min = Number(minRange.value);
   const max = Number(maxRange.value);
@@ -33,10 +40,18 @@ function updateRangeFill() {
 }
 
 function getLink() {
-  const collection = collectionSelect.value;
-  const min = formatFloat(minRange.value);
-  const max = formatFloat(maxRange.value);
-  return `https://csfloat.com/db?min=${min}&max=${max}&collection=${collection}`;
+  const params = new URLSearchParams();
+  const category = getSelectedSpecialCategory();
+  const rarity = raritySelect.value;
+
+  if (category) params.set('category', category);
+  if (rarity) params.set('rarity', rarity);
+
+  params.set('min', formatFloat(minRange.value));
+  params.set('max', formatFloat(maxRange.value));
+  params.set('collection', collectionSelect.value);
+
+  return `https://csfloat.com/db?${params.toString()}`;
 }
 
 function renderLink() {
@@ -83,8 +98,8 @@ async function loadCollections() {
     option.textContent = col.name;
     fragment.appendChild(option);
   }
-  collectionSelect.appendChild(fragment);
 
+  collectionSelect.appendChild(fragment);
   renderLink();
 }
 
@@ -93,6 +108,10 @@ maxRange.addEventListener('input', () => syncFromRange('max'));
 minInput.addEventListener('change', () => syncFromInput('min'));
 maxInput.addEventListener('change', () => syncFromInput('max'));
 collectionSelect.addEventListener('change', renderLink);
+raritySelect.addEventListener('change', renderLink);
+specialRadios.forEach((radio) => {
+  radio.addEventListener('change', renderLink);
+});
 
 openBtn.addEventListener('click', async () => {
   await chrome.tabs.create({ url: getLink() });
