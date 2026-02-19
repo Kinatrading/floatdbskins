@@ -205,3 +205,18 @@ input[type='range']::-moz-range-thumb {
   color: var(--ok);
   min-height: 16px;
 }
+
+.button.accent {
+  margin-top: 10px;
+  width: 100%;
+  background: #334155;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+#scanResult {
+  margin-top: 2px;
+}
