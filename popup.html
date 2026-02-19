@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CSFloat Колекції</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="card">
+      <h1>CSFloat: пошук по колекції</h1>
+
+      <label class="label" for="collectionSelect">Колекція</label>
+      <select id="collectionSelect" class="input"></select>
+
+      <section class="section-block">
+        <h2>Special</h2>
+        <div class="special-grid" id="specialGroup">
+          <label class="special-option special-stattrak">
+            <input type="radio" name="special" value="2" />
+            <span>StatTrak™</span>
+          </label>
+          <label class="special-option special-souvenir">
+            <input type="radio" name="special" value="3" />
+            <span>Souvenir</span>
+          </label>
+          <label class="special-option">
+            <input type="radio" name="special" value="1" />
+            <span>Normal</span>
+          </label>
+        </div>
+      </section>
+
+      <section class="section-block">
+        <h2>Rarity</h2>
+        <select id="raritySelect" class="input">
+          <option value="">Any</option>
+          <option value="1">Consumer</option>
+          <option value="2">Industrial</option>
+          <option value="3">Mil-Spec</option>
+          <option value="4">Restricted</option>
+          <option value="5">Classified</option>
+          <option value="6">Covert</option>
+          <option value="7">Contraband</option>
+        </select>
+      </section>
+
+      <section class="wear-block">
+        <h2>Float</h2>
+        <div class="slider-wrap">
+          <div class="track"></div>
+          <div id="rangeFill" class="range-fill"></div>
+          <input id="minRange" type="range" min="0" max="1" step="0.01" value="0" aria-label="Мінімальний float" />
+          <input id="maxRange" type="range" min="0" max="1" step="0.01" value="1" aria-label="Максимальний float" />
+        </div>
+
+        <div class="float-inputs">
+          <label>
+            Мінімум
+            <input id="minInput" class="input" type="number" min="0" max="1" step="0.01" value="0" />
+          </label>
+          <label>
+            Максимум
+            <input id="maxInput" class="input" type="number" min="0" max="1" step="0.01" value="1" />
+          </label>
+        </div>
+      </section>
+
+      <label class="label" for="resultUrl">Сформоване посилання</label>
+      <textarea id="resultUrl" class="input output" rows="3" readonly></textarea>
+
+      <div class="actions">
+        <button id="openBtn" class="button primary">Відкрити</button>
+        <button id="copyBtn" class="button">Копіювати</button>
+      </div>
+      <p id="status" class="status" aria-live="polite"></p>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

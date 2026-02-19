@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "CSFloat Колекції та Float",
+  "version": "1.1.0",
+  "description": "Підбір колекції, special та rarity для формування посилання на CSFloat DB.",
+  "action": {
+    "default_title": "CSFloat Колекції"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
