@@ -15,6 +15,7 @@ const excludeCrafted = document.getElementById('excludeCrafted');
 const statusEl = document.getElementById('status');
 const scanResult = document.getElementById('scanResult');
 const scanCards = document.getElementById('scanCards');
+const queueItems = document.getElementById('queueItems');
 const rateLimitInfo = document.getElementById('rateLimitInfo');
 const rangeFill = document.getElementById('rangeFill');
 
@@ -266,6 +267,7 @@ async function loadCollections() {
     collectionQueueSelect.options[0].selected = true;
   }
 
+  renderQueueItems();
   renderLink();
 }
 
@@ -450,6 +452,45 @@ function getQueueCollectionIds() {
   const selected = [...collectionQueueSelect.selectedOptions].map((option) => option.value);
   if (selected.length) return selected;
   return collectionSelect.value ? [collectionSelect.value] : [];
+}
+
+function removeCollectionFromQueue(collectionId) {
+  const option = [...collectionQueueSelect.options].find((item) => item.value === collectionId);
+  if (!option) return;
+  option.selected = false;
+  renderQueueItems();
+}
+
+function renderQueueItems() {
+  queueItems.innerHTML = '';
+  const selectedOptions = [...collectionQueueSelect.selectedOptions];
+
+  if (!selectedOptions.length) {
+    const empty = document.createElement('p');
+    empty.className = 'queue-empty';
+    empty.textContent = 'Черга порожня. Виберіть колекції вище.';
+    queueItems.appendChild(empty);
+    return;
+  }
+
+  for (const option of selectedOptions) {
+    const item = document.createElement('div');
+    item.className = 'queue-item';
+
+    const text = document.createElement('span');
+    text.className = 'queue-item-text';
+    text.textContent = option.textContent;
+    item.appendChild(text);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'queue-item-remove';
+    removeBtn.textContent = 'Прибрати';
+    removeBtn.addEventListener('click', () => removeCollectionFromQueue(option.value));
+    item.appendChild(removeBtn);
+
+    queueItems.appendChild(item);
+  }
 }
 
 function renderCollectionCard({ collectionName, imageUrl, theoreticalLines }) {
@@ -672,6 +713,7 @@ maxRange.addEventListener('input', () => syncFromRange('max'));
 minInput.addEventListener('change', () => syncFromInput('min'));
 maxInput.addEventListener('change', () => syncFromInput('max'));
 collectionSelect.addEventListener('change', renderLink);
+collectionQueueSelect.addEventListener('change', renderQueueItems);
 raritySelect.addEventListener('change', renderLink);
 specialRadios.forEach((radio) => radio.addEventListener('change', renderLink));
 
