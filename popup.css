@@ -23,7 +23,7 @@ body {
 }
 
 .card {
-  max-width: 460px;
+  max-width: 600px;
   margin: 0 auto;
   background: var(--panel);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -56,6 +56,11 @@ h2 {
   border-radius: 8px;
   padding: 9px 10px;
   font-size: 14px;
+}
+
+.queue-select {
+  min-height: 110px;
+  margin-bottom: 14px;
 }
 
 .section-block {
@@ -199,13 +204,6 @@ input[type='range']::-moz-range-thumb {
   border-color: transparent;
 }
 
-.status {
-  margin: 8px 0 0;
-  font-size: 12px;
-  color: var(--ok);
-  min-height: 16px;
-}
-
 .button.accent {
   margin-top: 10px;
   width: 100%;
@@ -233,4 +231,52 @@ input[type='range']::-moz-range-thumb {
 
 .stattrak-toggle input {
   accent-color: var(--accent);
+}
+
+.rate-limit {
+  margin: 10px 0;
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
+.scan-cards {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.scan-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 12px;
+  background: radial-gradient(circle at left, #2b2460 0%, #1a1f44 70%);
+}
+
+.scan-card-text h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.scan-card-text p {
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: #e2e8f0;
+}
+
+.scan-card-image {
+  width: 150px;
+  height: 100px;
+  object-fit: contain;
+}
+
+.status {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--ok);
+  min-height: 16px;
 }
