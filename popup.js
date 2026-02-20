@@ -389,7 +389,7 @@ async function pauseForRateLimit(rateLimit) {
   await new Promise((resolve) => window.setTimeout(resolve, waitMs + 250));
 }
 
-function buildCoverageReport(entries, shouldIncludeStatTrak) {
+function buildCoverageReport(entries, shouldIncludeStatTrak, openingsBreakdown) {
   const eligible = entries.filter((entry) => entry.chancePercent > 0);
   if (!eligible.length) return { fullLines: [], cardLines: [] };
 
@@ -402,10 +402,7 @@ function buildCoverageReport(entries, shouldIncludeStatTrak) {
   const referenceChanceFraction = reference.chancePercent / 100;
   const estimatedOpenings = reference.visibleCount / referenceChanceFraction;
 
-  const fullLines = [
-    `Видимість (еталон ${reference.rarityName} = 100%):`,
-    `Оцінка відкриттів: ${Math.round(estimatedOpenings).toLocaleString('en-US')}`
-  ];
+  const perRarityMetrics = new Map();
 
   for (const entry of eligible) {
     const chanceFraction = entry.chancePercent / 100;
@@ -414,10 +411,60 @@ function buildCoverageReport(entries, shouldIncludeStatTrak) {
     const visiblePercent = expectedVisible > 0 ? Math.min(100, (entry.visibleCount / expectedVisible) * 100) : 0;
     const hiddenPercent = Math.max(0, 100 - visiblePercent);
 
+    perRarityMetrics.set(entry.rarityName, {
+      entry,
+      expectedVisible,
+      hiddenCount,
+      visiblePercent,
+      hiddenPercent
+    });
+  }
+
+  let adjustedCovertOpenings = estimatedOpenings;
+  const classifiedMetrics = perRarityMetrics.get('Classified');
+  const covertMetrics = perRarityMetrics.get('Covert');
+
+  if (classifiedMetrics && covertMetrics && covertMetrics.entry.visibleCount > 0) {
+    const covertHiddenPercentByMultiplier = Math.min(100, classifiedMetrics.hiddenPercent * 0.68);
+    const visibleFraction = Math.max(0.000001, 1 - (covertHiddenPercentByMultiplier / 100));
+    const adjustedCovertExpected = covertMetrics.entry.visibleCount / visibleFraction;
+    const covertChanceFraction = covertMetrics.entry.chancePercent / 100;
+    adjustedCovertOpenings = adjustedCovertExpected / covertChanceFraction;
+
+    perRarityMetrics.set('Covert', {
+      ...covertMetrics,
+      expectedVisible: adjustedCovertExpected,
+      hiddenCount: Math.max(0, Math.round(adjustedCovertExpected - covertMetrics.entry.visibleCount)),
+      visiblePercent: Math.min(100, 100 - covertHiddenPercentByMultiplier),
+      hiddenPercent: covertHiddenPercentByMultiplier,
+      hiddenSource: `0.68 × hidden(Classified=${formatPercent(classifiedMetrics.hiddenPercent)})`
+    });
+  }
+
+  const lowerOpenings = Math.min(estimatedOpenings, adjustedCovertOpenings);
+  const upperOpenings = Math.max(estimatedOpenings, adjustedCovertOpenings);
+
+  const fullLines = [
+    `Видимість (еталон ${reference.rarityName} = 100%):`,
+    `Оцінка відкриттів: ${Math.round(lowerOpenings).toLocaleString('en-US')}–${Math.round(upperOpenings).toLocaleString('en-US')}`
+  ];
+
+  for (const entry of eligible) {
+    const metrics = perRarityMetrics.get(entry.rarityName);
+    const expectedVisible = metrics.expectedVisible;
+    const hiddenCount = metrics.hiddenCount;
+    const visiblePercent = metrics.visiblePercent;
+    const hiddenPercent = metrics.hiddenPercent;
+    const hiddenSource = metrics.hiddenSource;
+
     fullLines.push(
       `${entry.rarityName}: visible=${formatPercent(visiblePercent)} (${entry.visibleCount.toLocaleString('en-US')}), ` +
       `hidden=${formatPercent(hiddenPercent)} (${hiddenCount.toLocaleString('en-US')}), expected=${Math.round(expectedVisible).toLocaleString('en-US')}`
     );
+
+    if (hiddenSource) {
+      fullLines.push(`  Covert hidden rule: ${hiddenSource}`);
+    }
   }
 
   if (!shouldIncludeStatTrak) {
@@ -425,13 +472,21 @@ function buildCoverageReport(entries, shouldIncludeStatTrak) {
   }
 
   const theoreticalLines = eligible.map((entry) => {
-    const expected = estimatedOpenings * (entry.chancePercent / 100);
-    const formattedExpected = Math.round(expected).toLocaleString('en-US');
-    return `Теоретично ${entry.rarityName}: expected=${formattedExpected}-${formattedExpected}`;
+    const lowExpected = lowerOpenings * (entry.chancePercent / 100);
+    const highExpected = upperOpenings * (entry.chancePercent / 100);
+    return `Теоретично ${entry.rarityName}: expected=${Math.round(lowExpected).toLocaleString('en-US')}-${Math.round(highExpected).toLocaleString('en-US')}`;
   });
 
+  if (openingsBreakdown?.normalOpenings != null) {
+    theoreticalLines.push(`Теоретично (normal): оцінка відкриттів ≈ ${Math.round(openingsBreakdown.normalOpenings).toLocaleString('en-US')}.`);
+  }
+
+  if (openingsBreakdown?.stattrakOpenings != null) {
+    theoreticalLines.push(`Теоретично (stattrak): оцінка відкриттів ≈ ${Math.round(openingsBreakdown.stattrakOpenings).toLocaleString('en-US')}.`);
+  }
+
   theoreticalLines.push(
-    `Теоретично: оцінка відкриттів ≈ ${Math.round(estimatedOpenings).toLocaleString('en-US')}–${Math.round(estimatedOpenings).toLocaleString('en-US')}.`
+    `Теоретично: оцінка відкриттів ≈ ${Math.round(lowerOpenings).toLocaleString('en-US')}–${Math.round(upperOpenings).toLocaleString('en-US')}.`
   );
 
   return {
@@ -544,6 +599,10 @@ async function scanCollection(collectionId) {
   const lines = [];
   const coverageEntries = [];
   let total = 0;
+  let normalVisibleTotal = 0;
+  let normalChanceTotal = 0;
+  let stattrakVisibleTotal = 0;
+  let stattrakChanceTotal = 0;
 
   if (requestedStatTrak && !meta.hasStattrakSkins) {
     lines.push('Примітка: у цій колекції немає StatTrak, тому сканування StatTrak пропущено.');
@@ -607,6 +666,11 @@ async function scanCollection(collectionId) {
     const effectiveChance = baseChance + stattrakChance;
     total += rarityTotal;
 
+    normalVisibleTotal += normalAdjustedCount;
+    normalChanceTotal += baseChance;
+    stattrakVisibleTotal += stattrakAdjustedCount;
+    stattrakChanceTotal += stattrakChance;
+
     coverageEntries.push({
       rarityId,
       rarityName,
@@ -660,7 +724,17 @@ async function scanCollection(collectionId) {
     lines.push(perRarityLines.join('\n'));
   }
 
-  const coverage = buildCoverageReport(coverageEntries, shouldScanStatTrakEnabled);
+  const normalOpenings = normalChanceTotal > 0
+    ? normalVisibleTotal / (normalChanceTotal / 100)
+    : null;
+  const stattrakOpenings = shouldScanStatTrakEnabled && stattrakChanceTotal > 0
+    ? stattrakVisibleTotal / (stattrakChanceTotal / 100)
+    : null;
+
+  const coverage = buildCoverageReport(coverageEntries, shouldScanStatTrakEnabled, {
+    normalOpenings,
+    stattrakOpenings
+  });
 
   return {
     report: formatScanReport(
