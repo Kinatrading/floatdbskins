@@ -389,7 +389,7 @@ async function pauseForRateLimit(rateLimit) {
   await new Promise((resolve) => window.setTimeout(resolve, waitMs + 250));
 }
 
-function buildCoverageReport(entries, shouldScanStattrak) {
+function buildCoverageReport(entries) {
   const eligible = entries.filter((entry) => entry.chancePercent > 0);
   if (!eligible.length) return { fullLines: [], cardLines: [] };
 
@@ -715,9 +715,7 @@ maxInput.addEventListener('change', () => syncFromInput('max'));
 collectionSelect.addEventListener('change', renderLink);
 collectionQueueSelect.addEventListener('change', renderQueueItems);
 raritySelect.addEventListener('change', renderLink);
-specialRadios.forEach((radio) => {
-  radio.addEventListener('change', renderLink);
-});
+specialRadios.forEach((radio) => radio.addEventListener('change', renderLink));
 
 openBtn.addEventListener('click', async () => {
   await chrome.tabs.create({ url: getLink() });
