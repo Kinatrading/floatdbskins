@@ -64,6 +64,16 @@ function formatPercent(value) {
   return `${value.toFixed(3).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1')}%`;
 }
 
+function explainRuntimeError(error) {
+  if (!error) return 'Невідома помилка.';
+
+  if (error instanceof ReferenceError) {
+    return `ReferenceError: змінна або функція використана до оголошення (або є опечатка в назві). Деталі: ${error.message}`;
+  }
+
+  return `${error.name || 'Error'}: ${error.message || String(error)}`;
+}
+
 function getSelectedSpecialCategory() {
   const checked = document.querySelector('input[name="special"]:checked');
   return checked ? checked.value : '';
@@ -482,7 +492,7 @@ async function scanCollection(collectionId) {
     };
   }
 
-  const shouldScanStattrak = includeStattrak.checked;
+  const shouldScanStatTrakEnabled = includeStattrak.checked;
   const shouldExcludeCrafted = excludeCrafted.checked;
   const selectedCategory = getSelectedSpecialCategory();
   const normalCategory = selectedCategory || '1';
@@ -496,7 +506,7 @@ async function scanCollection(collectionId) {
   for (const rarityId of rarityIds) {
     const rarityName = RARITY_LABELS[rarityId] || `Rarity ${rarityId}`;
     const baseChance = meta.baseChances.get(rarityId) || 0;
-    const stattrakChance = shouldScanStattrak ? baseChance * 0.1 : 0;
+    const stattrakChance = shouldScanStatTrakEnabled ? baseChance * 0.1 : 0;
 
     statusEl.textContent = `Перевіряю ${rarityName}...`;
 
@@ -525,7 +535,7 @@ async function scanCollection(collectionId) {
     let stattrakAdjustedCount = 0;
     let stattrakCraftedEstimate = 0;
 
-    if (shouldScanStattrak) {
+    if (shouldScanStatTrakEnabled) {
       statusEl.textContent = `Перевіряю ${rarityName} (StatTrak)...`;
       const stattrakResult = await scanSingleRarity({ rarityId, category: '2', collectionId });
       stattrakCount = stattrakResult.state === 'ready' ? stattrakResult.count : 0;
@@ -567,7 +577,7 @@ async function scanCollection(collectionId) {
       perRarityLines.push(`  normal crafted-estimate=${normalCraftedEstimate.toLocaleString('en-US')} (paintSeed=1000 × 1000)`);
     }
 
-    if (shouldScanStattrak) {
+    if (shouldScanStatTrakEnabled) {
       perRarityLines.push(`  stattrak raw=${stattrakCount.toLocaleString('en-US')} adjusted=${stattrakAdjustedCount.toLocaleString('en-US')} chance=${formatPercent(stattrakChance)}`);
 
       if (shouldExcludeCrafted && rarityId !== lowestRarityId) {
@@ -604,7 +614,7 @@ async function scanCollection(collectionId) {
     lines.push(perRarityLines.join('\n'));
   }
 
-  const coverage = buildCoverageReport(coverageEntries, shouldScanStattrak);
+  const coverage = buildCoverageReport(coverageEntries, shouldScanStatTrakEnabled);
 
   return {
     report: formatScanReport(
@@ -648,7 +658,9 @@ async function runRarityScan() {
     scanResult.value = blocks.join('\n\n');
     statusEl.textContent = 'Готово. Черга автозбору завершена.';
   } catch (error) {
-    statusEl.textContent = 'Помилка під час автоматичного обходу.';
+    const reason = explainRuntimeError(error);
+    statusEl.textContent = `Помилка під час автоматичного обходу: ${reason}`;
+    scanResult.value = `Помилка сканування.\nПричина: ${reason}`;
     console.error(error);
   } finally {
     runScanBtn.disabled = false;
