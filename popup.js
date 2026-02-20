@@ -389,7 +389,7 @@ async function pauseForRateLimit(rateLimit) {
   await new Promise((resolve) => window.setTimeout(resolve, waitMs + 250));
 }
 
-function buildCoverageReport(entries) {
+function buildCoverageReport(entries, shouldIncludeStatTrak) {
   const eligible = entries.filter((entry) => entry.chancePercent > 0);
   if (!eligible.length) return { fullLines: [], cardLines: [] };
 
@@ -420,7 +420,7 @@ function buildCoverageReport(entries) {
     );
   }
 
-  if (!shouldScanStattrak) {
+  if (!shouldIncludeStatTrak) {
     fullLines.push('Примітка: розрахунок по normal. StatTrak вимкнено.');
   }
 
@@ -533,7 +533,8 @@ async function scanCollection(collectionId) {
     };
   }
 
-  const shouldScanStatTrakEnabled = includeStattrak.checked;
+  const shouldScanStatTrakEnabled = includeStattrak.checked && meta.hasStattrakSkins;
+  const requestedStatTrak = includeStattrak.checked;
   const shouldExcludeCrafted = excludeCrafted.checked;
   const selectedCategory = getSelectedSpecialCategory();
   const normalCategory = selectedCategory || '1';
@@ -543,6 +544,10 @@ async function scanCollection(collectionId) {
   const lines = [];
   const coverageEntries = [];
   let total = 0;
+
+  if (requestedStatTrak && !meta.hasStattrakSkins) {
+    lines.push('Примітка: у цій колекції немає StatTrak, тому сканування StatTrak пропущено.');
+  }
 
   for (const rarityId of rarityIds) {
     const rarityName = RARITY_LABELS[rarityId] || `Rarity ${rarityId}`;
