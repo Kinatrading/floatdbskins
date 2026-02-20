@@ -13,6 +13,14 @@
       <label class="label" for="collectionSelect">Колекція</label>
       <select id="collectionSelect" class="input"></select>
 
+      <label class="label" for="collectionQueueSelect">Черга колекцій (можна декілька)</label>
+      <select id="collectionQueueSelect" class="input queue-select" multiple></select>
+
+      <section class="queue-block">
+        <h2>Вибрані в чергу</h2>
+        <div id="queueItems" class="queue-items" aria-live="polite"></div>
+      </section>
+
       <section class="section-block">
         <h2>Special</h2>
         <div class="special-grid" id="specialGroup">
@@ -74,7 +82,7 @@
         <button id="copyBtn" class="button">Копіювати</button>
       </div>
 
-      <button id="runScanBtn" class="button accent">Автозбір по rarity</button>
+      <button id="runScanBtn" class="button accent">Автозбір по черзі</button>
 
       <label class="stattrak-toggle">
         <input id="includeStattrak" type="checkbox" />
@@ -86,9 +94,12 @@
         Виключити скрафчені (через paintSeed=1000)
       </label>
 
-      <label class="label" for="scanResult">Результат автозбору</label>
-      <textarea id="scanResult" class="input output" rows="7" readonly></textarea>
+      <p id="rateLimitInfo" class="rate-limit">Rate limit: —</p>
 
+      <label class="label" for="scanResult">Результат автозбору</label>
+      <textarea id="scanResult" class="input output" rows="9" readonly></textarea>
+
+      <div id="scanCards" class="scan-cards"></div>
       <p id="status" class="status" aria-live="polite"></p>
     </main>
 
