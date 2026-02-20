@@ -20,8 +20,11 @@ const rangeFill = document.getElementById('rangeFill');
 
 const STEP = 0.01;
 const RATE_LIMIT_PAUSE_THRESHOLD = 10;
+const RATE_LIMIT_POLL_MS = 1000;
+
 const rarityMetaByCollection = new Map();
 const collectionInfoById = new Map();
+let rateLimitPollInterval = null;
 
 const RARITY_LABELS = {
   1: 'Consumer',
@@ -198,7 +201,10 @@ function buildCollectionInfo(skins, collections) {
       if (!normalizedId) continue;
 
       if (!map.has(normalizedId)) {
-        map.set(normalizedId, { name: collection.name || normalizedId, image: collection.image || '' });
+        map.set(normalizedId, {
+          name: collection.name || normalizedId,
+          image: collection.image || ''
+        });
       }
 
       const info = map.get(normalizedId);
@@ -314,7 +320,7 @@ async function waitForDbResult(tabId, timeoutMs = 45000) {
   return { state: 'timeout' };
 }
 
-function getRateLimitForTab(tabId) {
+function fetchRateLimit(tabId = null) {
   return new Promise((resolve) => {
     chrome.runtime.sendMessage({ type: 'GET_RATE_LIMIT', tabId }, (response) => {
       resolve(response?.rateLimit || null);
@@ -327,18 +333,36 @@ function updateRateLimitInfo(rateLimit) {
   rateLimitInfo.textContent = `Rate limit: ${rateLimit.remaining}/${rateLimit.limit} (reset ${new Date(rateLimit.reset * 1000).toLocaleTimeString('uk-UA')})`;
 }
 
+async function refreshRateLimitInfo() {
+  const rateLimit = await fetchRateLimit(null);
+  updateRateLimitInfo(rateLimit);
+}
+
+function startRateLimitPolling() {
+  if (rateLimitPollInterval) window.clearInterval(rateLimitPollInterval);
+
+  refreshRateLimitInfo().catch(() => {});
+  rateLimitPollInterval = window.setInterval(() => {
+    refreshRateLimitInfo().catch(() => {});
+  }, RATE_LIMIT_POLL_MS);
+}
+
 async function scanSingleRarity({ rarityId, category, collectionId, paintSeed }) {
   const tab = await chrome.tabs.create({
-    url: buildLink({ rarity: String(rarityId), category, paintSeed, collectionId }),
+    url: buildLink({ rarity: String(rarityId), category, collectionId, paintSeed }),
     active: false
   });
 
   try {
     await waitForTabComplete(tab.id);
     const result = await waitForDbResult(tab.id);
-    const rateLimit = await getRateLimitForTab(tab.id);
+    const rateLimit = await fetchRateLimit(tab.id);
     updateRateLimitInfo(rateLimit);
-    return { ...result, rateLimit };
+
+    return {
+      ...result,
+      rateLimit
+    };
   } finally {
     await chrome.tabs.remove(tab.id);
   }
@@ -355,27 +379,61 @@ async function pauseForRateLimit(rateLimit) {
 
 function buildCoverageReport(entries) {
   const eligible = entries.filter((entry) => entry.chancePercent > 0);
-  if (!eligible.length) return [];
+  if (!eligible.length) return { fullLines: [], cardLines: [] };
 
-  const reference = [...eligible].sort((a, b) => b.rarityId - a.rarityId).find((entry) => entry.visibleCount > 0);
-  if (!reference) return [];
+  const reference = [...eligible]
+    .sort((a, b) => b.rarityId - a.rarityId)
+    .find((entry) => entry.visibleCount > 0);
 
-  const estimatedOpenings = reference.visibleCount / (reference.chancePercent / 100);
-  const theoreticalLines = [];
+  if (!reference) return { fullLines: [], cardLines: [] };
+
+  const referenceChanceFraction = reference.chancePercent / 100;
+  const estimatedOpenings = reference.visibleCount / referenceChanceFraction;
+
+  const fullLines = [
+    `Видимість (еталон ${reference.rarityName} = 100%):`,
+    `Оцінка відкриттів: ${Math.round(estimatedOpenings).toLocaleString('en-US')}`
+  ];
 
   for (const entry of eligible) {
-    const expected = estimatedOpenings * (entry.chancePercent / 100);
-    const expectedRounded = Math.round(expected).toLocaleString('en-US');
-    theoreticalLines.push(`Теоретично ${entry.rarityName}: expected=${expectedRounded}-${expectedRounded}`);
+    const chanceFraction = entry.chancePercent / 100;
+    const expectedVisible = estimatedOpenings * chanceFraction;
+    const hiddenCount = Math.max(0, Math.round(expectedVisible - entry.visibleCount));
+    const visiblePercent = expectedVisible > 0 ? Math.min(100, (entry.visibleCount / expectedVisible) * 100) : 0;
+    const hiddenPercent = Math.max(0, 100 - visiblePercent);
+
+    fullLines.push(
+      `${entry.rarityName}: visible=${formatPercent(visiblePercent)} (${entry.visibleCount.toLocaleString('en-US')}), ` +
+      `hidden=${formatPercent(hiddenPercent)} (${hiddenCount.toLocaleString('en-US')}), expected=${Math.round(expectedVisible).toLocaleString('en-US')}`
+    );
   }
 
-  theoreticalLines.push(`Теоретично: оцінка відкриттів ≈ ${Math.round(estimatedOpenings).toLocaleString('en-US')}–${Math.round(estimatedOpenings).toLocaleString('en-US')}.`);
-  return theoreticalLines;
+  if (!shouldScanStattrak) {
+    fullLines.push('Примітка: розрахунок по normal. StatTrak вимкнено.');
+  }
+
+  const theoreticalLines = eligible.map((entry) => {
+    const expected = estimatedOpenings * (entry.chancePercent / 100);
+    const formattedExpected = Math.round(expected).toLocaleString('en-US');
+    return `Теоретично ${entry.rarityName}: expected=${formattedExpected}-${formattedExpected}`;
+  });
+
+  theoreticalLines.push(
+    `Теоретично: оцінка відкриттів ≈ ${Math.round(estimatedOpenings).toLocaleString('en-US')}–${Math.round(estimatedOpenings).toLocaleString('en-US')}.`
+  );
+
+  return {
+    fullLines: [...fullLines, '', ...theoreticalLines],
+    cardLines: theoreticalLines
+  };
 }
 
-function formatScanReport(lines, summary, theoreticalLines = []) {
-  if (!theoreticalLines.length) return `${lines.join('\n')}\n\n${summary}`;
-  return `${lines.join('\n')}\n\n${theoreticalLines.join('\n')}\n\n${summary}`;
+function formatScanReport(lines, summary, coverageLines = []) {
+  if (!coverageLines.length) {
+    return `${lines.join('\n')}\n\n${summary}`;
+  }
+
+  return `${lines.join('\n')}\n\n${coverageLines.join('\n')}\n\n${summary}`;
 }
 
 function getQueueCollectionIds() {
@@ -416,10 +474,11 @@ function renderCollectionCard({ collectionName, imageUrl, theoreticalLines }) {
 
 async function scanCollection(collectionId) {
   const meta = rarityMetaByCollection.get(collectionId);
+
   if (!meta || !meta.sortedRarityIds?.length) {
     return {
       report: 'Не вдалося знайти rarity у skins.json для цієї колекції.',
-      theoreticalLines: []
+      cardLines: []
     };
   }
 
@@ -437,44 +496,123 @@ async function scanCollection(collectionId) {
   for (const rarityId of rarityIds) {
     const rarityName = RARITY_LABELS[rarityId] || `Rarity ${rarityId}`;
     const baseChance = meta.baseChances.get(rarityId) || 0;
+    const stattrakChance = shouldScanStattrak ? baseChance * 0.1 : 0;
 
     statusEl.textContent = `Перевіряю ${rarityName}...`;
+
     const normalResult = await scanSingleRarity({ rarityId, category: normalCategory, collectionId });
     const normalCount = normalResult.state === 'ready' ? normalResult.count : 0;
     await pauseForRateLimit(normalResult.rateLimit);
 
     let normalAdjustedCount = normalCount;
+    let normalCraftedEstimate = 0;
+
     if (shouldExcludeCrafted && rarityId !== lowestRarityId) {
-      const patternResult = await scanSingleRarity({ rarityId, category: normalCategory, collectionId, paintSeed: '1000' });
-      const patternCount = patternResult.state === 'ready' ? patternResult.count : 0;
-      normalAdjustedCount = Math.max(0, normalCount - (patternCount * 1000));
-      await pauseForRateLimit(patternResult.rateLimit);
+      statusEl.textContent = `Перевіряю ${rarityName} (normal, paintSeed=1000)...`;
+      const normalPatternResult = await scanSingleRarity({
+        rarityId,
+        category: normalCategory,
+        collectionId,
+        paintSeed: '1000'
+      });
+      const patternCount = normalPatternResult.state === 'ready' ? normalPatternResult.count : 0;
+      normalCraftedEstimate = patternCount * 1000;
+      normalAdjustedCount = Math.max(0, normalCount - normalCraftedEstimate);
+      await pauseForRateLimit(normalPatternResult.rateLimit);
     }
 
+    let stattrakCount = 0;
     let stattrakAdjustedCount = 0;
-    let stattrakChance = 0;
+    let stattrakCraftedEstimate = 0;
+
     if (shouldScanStattrak) {
+      statusEl.textContent = `Перевіряю ${rarityName} (StatTrak)...`;
       const stattrakResult = await scanSingleRarity({ rarityId, category: '2', collectionId });
-      const stattrakCount = stattrakResult.state === 'ready' ? stattrakResult.count : 0;
+      stattrakCount = stattrakResult.state === 'ready' ? stattrakResult.count : 0;
       stattrakAdjustedCount = stattrakCount;
-      stattrakChance = baseChance * 0.1;
       await pauseForRateLimit(stattrakResult.rateLimit);
+
+      if (shouldExcludeCrafted && rarityId !== lowestRarityId) {
+        statusEl.textContent = `Перевіряю ${rarityName} (StatTrak, paintSeed=1000)...`;
+        const stattrakPatternResult = await scanSingleRarity({
+          rarityId,
+          category: '2',
+          collectionId,
+          paintSeed: '1000'
+        });
+        const patternCount = stattrakPatternResult.state === 'ready' ? stattrakPatternResult.count : 0;
+        stattrakCraftedEstimate = patternCount * 1000;
+        stattrakAdjustedCount = Math.max(0, stattrakCount - stattrakCraftedEstimate);
+        await pauseForRateLimit(stattrakPatternResult.rateLimit);
+      }
     }
 
     const rarityTotal = normalAdjustedCount + stattrakAdjustedCount;
     const effectiveChance = baseChance + stattrakChance;
     total += rarityTotal;
 
-    coverageEntries.push({ rarityId, rarityName, visibleCount: rarityTotal, chancePercent: effectiveChance });
-    lines.push(`${rarityName}: total=${rarityTotal.toLocaleString('en-US')} [${formatPercent(effectiveChance)}]`);
+    coverageEntries.push({
+      rarityId,
+      rarityName,
+      visibleCount: rarityTotal,
+      chancePercent: effectiveChance
+    });
+
+    const perRarityLines = [
+      `${rarityName} (${rarityId}):`,
+      `  normal raw=${normalCount.toLocaleString('en-US')} adjusted=${normalAdjustedCount.toLocaleString('en-US')} chance=${formatPercent(baseChance)}`
+    ];
+
+    if (shouldExcludeCrafted && rarityId !== lowestRarityId) {
+      perRarityLines.push(`  normal crafted-estimate=${normalCraftedEstimate.toLocaleString('en-US')} (paintSeed=1000 × 1000)`);
+    }
+
+    if (shouldScanStattrak) {
+      perRarityLines.push(`  stattrak raw=${stattrakCount.toLocaleString('en-US')} adjusted=${stattrakAdjustedCount.toLocaleString('en-US')} chance=${formatPercent(stattrakChance)}`);
+
+      if (shouldExcludeCrafted && rarityId !== lowestRarityId) {
+        perRarityLines.push(`  stattrak crafted-estimate=${stattrakCraftedEstimate.toLocaleString('en-US')} (paintSeed=1000 × 1000)`);
+      }
+
+      const expectedNormalFromSt = stattrakAdjustedCount * 10;
+      const expectedStFromNormal = normalAdjustedCount / 10;
+      const missingNormalByRatio = Math.max(0, Math.round(expectedNormalFromSt - normalAdjustedCount));
+      const missingStattrakByRatio = Math.max(0, Math.round(expectedStFromNormal - stattrakAdjustedCount));
+      const ratio = stattrakAdjustedCount > 0
+        ? normalAdjustedCount / stattrakAdjustedCount
+        : null;
+
+      perRarityLines.push(
+        `  ratio-check 10:1 -> normal/stattrak=${ratio ? ratio.toFixed(2) : '∞'}; ` +
+        `expected normal from ST=${Math.round(expectedNormalFromSt).toLocaleString('en-US')}, expected ST from normal=${Math.round(expectedStFromNormal).toLocaleString('en-US')}`
+      );
+      perRarityLines.push(
+        `  potential hidden: normal≈${missingNormalByRatio.toLocaleString('en-US')}, stattrak≈${missingStattrakByRatio.toLocaleString('en-US')}`
+      );
+
+      if (baseChance > 0 && stattrakChance > 0) {
+        const openingsByNormal = normalAdjustedCount / (baseChance / 100);
+        const openingsByStattrak = stattrakAdjustedCount / (stattrakChance / 100);
+        perRarityLines.push(
+          `  openings estimate: normal-based≈${Math.round(openingsByNormal).toLocaleString('en-US')}, ` +
+          `stattrak-based≈${Math.round(openingsByStattrak).toLocaleString('en-US')}`
+        );
+      }
+    }
+
+    perRarityLines.push(`  total=${rarityTotal.toLocaleString('en-US')} effectiveChance=${formatPercent(effectiveChance)}`);
+    lines.push(perRarityLines.join('\n'));
   }
 
-  const theoreticalLines = buildCoverageReport(coverageEntries);
-  const summary = `Тип: ${meta.kind}. Загальна кількість скінів: ${total.toLocaleString('en-US')}`;
+  const coverage = buildCoverageReport(coverageEntries, shouldScanStattrak);
+
   return {
-    report: formatScanReport(lines, summary, theoreticalLines),
-    theoreticalLines,
-    summary
+    report: formatScanReport(
+      lines,
+      `Тип: ${meta.kind}. Загальна кількість скінів: ${total.toLocaleString('en-US')}`,
+      coverage.fullLines
+    ),
+    cardLines: coverage.cardLines
   };
 }
 
@@ -484,6 +622,7 @@ async function runRarityScan() {
   scanCards.innerHTML = '';
 
   const queue = getQueueCollectionIds();
+
   if (!queue.length) {
     statusEl.textContent = 'Оберіть хоча б одну колекцію для черги.';
     runScanBtn.disabled = false;
@@ -501,9 +640,9 @@ async function runRarityScan() {
       const info = collectionInfoById.get(collectionId) || { name: collectionId, image: '' };
       statusEl.textContent = `Черга ${index + 1}/${queue.length}: ${info.name}`;
 
-      const { report, theoreticalLines } = await scanCollection(collectionId);
+      const { report, cardLines } = await scanCollection(collectionId);
       blocks.push(`=== ${info.name} ===\n${report}`);
-      renderCollectionCard({ collectionName: info.name, imageUrl: info.image, theoreticalLines });
+      renderCollectionCard({ collectionName: info.name, imageUrl: info.image, theoreticalLines: cardLines });
     }
 
     scanResult.value = blocks.join('\n\n');
@@ -526,6 +665,7 @@ specialRadios.forEach((radio) => radio.addEventListener('change', renderLink));
 
 openBtn.addEventListener('click', async () => {
   await chrome.tabs.create({ url: getLink() });
+  statusEl.textContent = 'Відкрито сторінку DB. Чекаю оновлення rate limit...';
 });
 
 copyBtn.addEventListener('click', async () => {
@@ -549,4 +689,5 @@ loadCollections().catch((error) => {
   console.error(error);
 });
 
+startRateLimitPolling();
 syncFromRange('min');

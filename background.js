@@ -3,6 +3,7 @@ chrome.action.onClicked.addListener(async () => {
 });
 
 const rateLimitByTabId = new Map();
+let latestRateLimit = null;
 
 function parseHeaderValue(responseHeaders, headerName) {
   const header = responseHeaders?.find((item) => item.name?.toLowerCase() === headerName.toLowerCase());
@@ -11,7 +12,7 @@ function parseHeaderValue(responseHeaders, headerName) {
 
 chrome.webRequest.onHeadersReceived.addListener(
   (details) => {
-    if (details.tabId < 0) return;
+    if (!details.url.includes('/api/v1/floatdb/search')) return;
 
     const limit = Number.parseInt(parseHeaderValue(details.responseHeaders, 'x-ratelimit-limit'), 10);
     const remaining = Number.parseInt(parseHeaderValue(details.responseHeaders, 'x-ratelimit-remaining'), 10);
@@ -19,14 +20,15 @@ chrome.webRequest.onHeadersReceived.addListener(
 
     if (Number.isNaN(limit) || Number.isNaN(remaining) || Number.isNaN(reset)) return;
 
-    rateLimitByTabId.set(details.tabId, {
-      limit,
-      remaining,
-      reset
-    });
+    const value = { limit, remaining, reset };
+
+    latestRateLimit = value;
+    if (details.tabId >= 0) {
+      rateLimitByTabId.set(details.tabId, value);
+    }
   },
   {
-    urls: ['https://csfloat.com/*search*']
+    urls: ['https://csfloat.com/api/v1/floatdb/search*']
   },
   ['responseHeaders']
 );
@@ -38,7 +40,10 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== 'GET_RATE_LIMIT') return;
 
+  const tabId = Number.isInteger(message.tabId) ? message.tabId : null;
   sendResponse({
-    rateLimit: rateLimitByTabId.get(message.tabId) || null
+    rateLimit: tabId !== null
+      ? (rateLimitByTabId.get(tabId) || latestRateLimit)
+      : latestRateLimit
   });
 });
